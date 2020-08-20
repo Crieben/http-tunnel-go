@@ -9,6 +9,7 @@ import (
 	"net"
 	"os"
 	"strings"
+	"time"
 )
 
 type ClientManager struct {
@@ -22,6 +23,7 @@ type ClientManager struct {
 type Client struct {
 	socket net.Conn
 	proxy  Proxy
+	timer  *time.Timer
 }
 
 type Proxy struct {
@@ -89,6 +91,15 @@ func isHttpRequest(request *[]byte) bool {
 }
 
 func (manager *ClientManager) handleConnection(client *Client) {
+
+	// close connection after timer
+	go func() {
+		if client.timer != nil {
+			<-client.timer.C
+			client.proxy.socket.Close()
+			client.socket.Close()
+		}
+	}()
 
 	// client to proxy
 	go func() {
@@ -179,12 +190,13 @@ func (manager *ClientManager) handleConnection(client *Client) {
 
 func main() {
 
-	fmt.Println("A Cross-Platform HTTP Tunnel by @lfasmpao | Version: 0.0.3 alpha")
+	fmt.Println("A Cross-Platform HTTP Tunnel by @lfasmpao | Version: 0.0.4 alpha")
 
 	hostPtr := flag.String("proxy", "", "Proxy Server [host:port] (required)")
 	payloadPtr := flag.String("payload", "", "Payload (required)")
 	listenPtr := flag.String("listen", "127.0.0.1:8888", "Local Server [host:port]")
 	authPtr := flag.String("auth", "", "Proxy Authentication [username:password] (optional)")
+	timerPtr := flag.Int("timer", 0, "Client Connection Timer")
 	flag.Parse()
 
 	if *hostPtr == "" || *payloadPtr == "" {
@@ -233,6 +245,11 @@ func main() {
 				socket:    proxy,
 				connected: false,
 			},
+			timer: nil,
+		}
+
+		if *timerPtr != 0 {
+			client.timer = time.NewTimer(time.Duration(*timerPtr+5) * time.Second) // add 5 secs bias
 		}
 
 		manager.register <- client
